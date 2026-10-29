@@ -3,8 +3,8 @@ src/*.mo
 src/dnsmasq.pot
 src/dnsmasq
 src/dnsmasq_baseline
+src/dnsmasq_test
 src/.copts_*
 contrib/lease-tools/dhcp_lease_time
 contrib/lease-tools/dhcp_release
 contrib/lease-tools/dhcp_release6
-

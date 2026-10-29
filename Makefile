@@ -44,6 +44,7 @@ XGETTEXT   = xgettext
 SRC = src
 PO  = po
 MAN = man
+TESTS = tests
 
 #################################################################
 
@@ -83,6 +84,12 @@ objs = cache.o rfc1035.o util.o option.o forward.o network.o \
        poll.o rrfilter.o edns0.o arp.o crypto.o dump.o ubus.o \
        metrics.o domain-match.o nftset.o
 
+# Unit tests: everything except main(), which is renamed so the test
+# runner can provide its own.
+test_srcobjs = check_dnsmasq.o test_util.o test_rfc1035.o test_option.o \
+       test_cache.o test_edns0.o
+test_objs = $(filter-out dnsmasq.o,$(objs)) dnsmasq_main.o $(test_srcobjs)
+
 hdrs = dnsmasq.h config.h dhcp-protocol.h dhcp6-protocol.h \
        dns-protocol.h radv-protocol.h ip6addr.h metrics.h
 
@@ -93,9 +100,18 @@ all : $(BUILDDIR)
  build_libs="$(dbus_libs) $(idn2_libs) $(idn_libs) $(ct_libs) $(lua_libs) $(sunos_libs) $(nettle_libs) $(gmp_libs) $(ubus_libs) $(nft_libs)" \
  -f $(top)/Makefile dnsmasq 
 
+check : $(BUILDDIR)
+	@cd $(BUILDDIR) && $(MAKE) \
+ top="$(top)" \
+ build_cflags="$(version) $(dbus_cflags) $(idn2_cflags) $(idn_cflags) $(ct_cflags) $(lua_cflags) $(nettle_cflags) $(nft_cflags) `$(PKG_CONFIG) --cflags check`" \
+ build_libs="$(dbus_libs) $(idn2_libs) $(idn_libs) $(ct_libs) $(lua_libs) $(sunos_libs) $(nettle_libs) $(gmp_libs) $(ubus_libs) $(nft_libs) `$(PKG_CONFIG) --libs check`" \
+ -f $(top)/Makefile dnsmasq_test
+	cd $(BUILDDIR) && ./dnsmasq_test
+
 mostly_clean :
 	rm -f $(BUILDDIR)/*.mo $(BUILDDIR)/*.pot 
 	rm -f $(BUILDDIR)/.copts_* $(BUILDDIR)/*.o $(BUILDDIR)/dnsmasq.a $(BUILDDIR)/dnsmasq
+	rm -f $(BUILDDIR)/dnsmasq_test
 
 clean : mostly_clean
 	rm -f $(BUILDDIR)/dnsmasq_baseline
@@ -169,10 +185,21 @@ $(objs): $(copts_conf) $(hdrs)
 dnsmasq : $(objs)
 	$(CC) $(LDFLAGS) -o $@ $(objs) $(build_libs) $(LIBS) 
 
+dnsmasq_main.o : dnsmasq.c $(copts_conf) $(hdrs)
+	$(CC) $(CFLAGS) $(COPTS) $(i18n) $(build_cflags) $(RPM_OPT_FLAGS) -Dmain=dnsmasq_main -c dnsmasq.c -o $@
+
+$(test_srcobjs) : $(copts_conf) $(hdrs) $(top)/$(TESTS)/tests.h
+
+%.o : $(top)/$(TESTS)/%.c
+	$(CC) $(CFLAGS) $(COPTS) $(i18n) $(build_cflags) $(RPM_OPT_FLAGS) -I. -c $< -o $@
+
+dnsmasq_test : $(test_objs)
+	$(CC) $(LDFLAGS) -o $@ $(test_objs) $(build_libs) $(LIBS)
+
 dnsmasq.pot : $(objs:.o=.c) $(hdrs)
 	$(XGETTEXT) -d dnsmasq --foreign-user --omit-header --keyword=_ -o $@ -i $(objs:.o=.c)
 
 %.mo : $(top)/$(PO)/%.po dnsmasq.pot
 	$(MSGMERGE) -o - $(top)/$(PO)/$*.po dnsmasq.pot | $(MSGFMT) -o $*.mo -
 
-.PHONY : all clean mostly_clean install install-common all-i18n install-i18n merge baseline bloatcheck
+.PHONY : all check clean mostly_clean install install-common all-i18n install-i18n merge baseline bloatcheck
