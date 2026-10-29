@@ -248,6 +248,7 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
   int dhcp6_ok = 1;
   int auth_dns = 0;
   int is_label = 0;
+  union all_addr aligned_addr;
 #if defined(HAVE_DHCP) || defined(HAVE_TFTP)
   struct iname *tmp;
 #endif
@@ -520,13 +521,20 @@ static int iface_allowed(struct iface_param *param, int if_index, char *label,
 	}
     }
   
-  if (addr->sa.sa_family == AF_INET &&
-      !iface_check(AF_INET, (union all_addr *)&addr->in.sin_addr, label, &auth_dns))
-    return 1;
+  /* Copy: sockaddr fields aren't aligned for union all_addr. */
+  if (addr->sa.sa_family == AF_INET)
+    {
+      memcpy(&aligned_addr.addr4, &addr->in.sin_addr, INADDRSZ);
+      if (!iface_check(AF_INET, &aligned_addr, label, &auth_dns))
+	return 1;
+    }
 
-  if (addr->sa.sa_family == AF_INET6 &&
-      !iface_check(AF_INET6, (union all_addr *)&addr->in6.sin6_addr, label, &auth_dns))
-    return 1;
+  if (addr->sa.sa_family == AF_INET6)
+    {
+      memcpy(&aligned_addr.addr6, &addr->in6.sin6_addr, IN6ADDRSZ);
+      if (!iface_check(AF_INET6, &aligned_addr, label, &auth_dns))
+	return 1;
+    }
     
 #ifdef HAVE_DHCP
   /* No DHCP where we're doing auth DNS. */
