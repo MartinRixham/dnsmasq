@@ -131,6 +131,23 @@ START_TEST(test_parse_hex_bad) {
 }
 END_TEST
 
+START_TEST(test_ipv4_netmask) {
+  struct in_addr a, b, mask;
+
+  inet_pton(AF_INET, "255.255.255.0", &mask);
+  ck_assert_int_eq(netmask_length(mask), 24);
+
+  inet_pton(AF_INET, "192.168.1.10", &a);
+  inet_pton(AF_INET, "192.168.1.200", &b);
+  ck_assert(is_same_net(a, b, mask));
+  ck_assert(is_same_net_prefix(a, b, 24));
+
+  inet_pton(AF_INET, "192.168.2.10", &b);
+  ck_assert(!is_same_net(a, b, mask));
+  ck_assert(is_same_net_prefix(a, b, 16));
+}
+END_TEST
+
 START_TEST(test_ipv6_net) {
   struct in6_addr a, b;
 
@@ -217,6 +234,7 @@ Suite *util_suite(void) {
   tcase_add_test(tc_hex, test_parse_hex_bad);
   suite_add_tcase(s, tc_hex);
 
+  tcase_add_test(tc_addr, test_ipv4_netmask);
   tcase_add_test(tc_addr, test_ipv6_net);
   tcase_add_test(tc_addr, test_sockaddr_isequal);
   suite_add_tcase(s, tc_addr);
