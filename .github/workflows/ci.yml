@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every optional feature that has a Linux library behind it.
+  FULL_COPTS: >-
+    -DHAVE_DBUS -DHAVE_LIBIDN2 -DHAVE_CONNTRACK -DHAVE_DNSSEC
+    -DHAVE_NFTSET -DHAVE_LUASCRIPT
+  # Everything that can be compiled out.
+  MINIMAL_COPTS: >-
+    -DNO_DHCP -DNO_DHCP6 -DNO_TFTP -DNO_SCRIPT -DNO_AUTH -DNO_IPSET
+    -DNO_LOOP -DNO_DUMPFILE -DNO_INOTIFY
+  FULL_DEPS: >-
+    libdbus-1-dev libidn2-dev libnetfilter-conntrack-dev nettle-dev
+    libgmp-dev libnftables-dev liblua5.4-dev
+
+jobs:
+  build:
+    name: build (${{ matrix.cc }}, ${{ matrix.config }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+        config: [default, full, minimal]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        if: matrix.config == 'full'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $FULL_DEPS
+
+      - name: Select options
+        run: |
+          case "${{ matrix.config }}" in
+            full)    echo "COPTS=$FULL_COPTS" >> "$GITHUB_ENV" ;;
+            minimal) echo "COPTS=$MINIMAL_COPTS" >> "$GITHUB_ENV" ;;
+            *)       echo "COPTS=" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Build
+        run: make -j"$(nproc)" CC=${{ matrix.cc }} COPTS="$COPTS" LUA=lua5.4
+
+      - name: Smoke test
+        run: |
+          ./src/dnsmasq --version
+          ./src/dnsmasq --test --conf-file=dnsmasq.conf.example
+
+  check:
+    name: make check (${{ matrix.cc }}, ${{ matrix.config }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+        config: [default, full]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends check pkg-config \
+            ${{ matrix.config == 'full' && env.FULL_DEPS || '' }}
+
+      - name: Run unit tests
+        run: |
+          [ "${{ matrix.config }}" = full ] && COPTS="$FULL_COPTS"
+          make -j"$(nproc)" CC=${{ matrix.cc }} COPTS="${COPTS:-}" LUA=lua5.4 check
+
+  sanitizers:
+    name: make check (ASan + UBSan)
+    runs-on: ubuntu-latest
+    # Advisory until the existing reports are fixed: a misaligned load
+    # in cache.c and a leak in test_canonicalise.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends check pkg-config
+
+      - name: Run unit tests under sanitizers
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          make -j"$(nproc)" CC=clang \
+            CFLAGS="-Wall -W -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
+            LDFLAGS="-fsanitize=address,undefined" check
+
+  i18n:
+    name: build (i18n)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gettext
+
+      - name: Build with translations
+        run: make -j"$(nproc)" all-i18n
