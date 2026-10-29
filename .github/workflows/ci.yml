@@ -97,7 +97,7 @@ jobs:
           make -j"$(nproc)" CC=${{ matrix.cc }} COPTS="${COPTS:-}" LUA=lua5.4 check
 
   sanitizers:
-    name: make check (ASan + UBSan)
+    name: tests (ASan + UBSan)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -105,7 +105,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends check pkg-config
+          sudo apt-get install -y --no-install-recommends check pkg-config \
+            dnsutils shunit2
 
       - name: Run unit tests under sanitizers
         env:
@@ -114,6 +115,19 @@ jobs:
           make -j"$(nproc)" CC=clang \
             CFLAGS="-Wall -W -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
             LDFLAGS="-fsanitize=address,undefined" check
+
+      # The malicious input and fuzzing tests are most useful here. The
+      # tests fail on any sanitizer report in a daemon's stderr. Leak
+      # checking is off as dnsmasq doesn't free everything at exit.
+      - name: Run functional tests under sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1
+          FUZZ_COUNT: 20000
+        run: |
+          make -j"$(nproc)" CC=clang \
+            CFLAGS="-Wall -W -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
+            LDFLAGS="-fsanitize=address,undefined" check-functional
 
   # Build and run the functional tests on a spread of distributions:
   # glibc and musl, gcc and clang, old and new toolchains, 32-bit, and a

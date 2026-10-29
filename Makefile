@@ -108,9 +108,14 @@ check : $(BUILDDIR)
  -f $(top)/Makefile dnsmasq_test
 	cd $(BUILDDIR) && ./dnsmasq_test
 
-# Functional tests: run the built daemon and query it. Needs dig and shunit2.
+# Functional tests: run the built daemon and query it, including with
+# hostile input. Needs dig, python3 and shunit2.
 check-functional : all
-	DNSMASQ=$(top)/$(BUILDDIR)/dnsmasq $(SHELL) $(top)/tests/functional/dnsmasq_test.sh
+	status=0; \
+	for t in dnsmasq_test.sh security_test.sh; do \
+	  DNSMASQ=$(top)/$(BUILDDIR)/dnsmasq $(SHELL) $(top)/tests/functional/$$t || status=1; \
+	done; \
+	exit $$status
 
 mostly_clean :
 	rm -f $(BUILDDIR)/*.mo $(BUILDDIR)/*.pot 

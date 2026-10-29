@@ -30,18 +30,18 @@ if command -v apt-get >/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends \
-    $cc_pkg make libc6-dev dnsutils curl shunit2 >/dev/null
+    $cc_pkg make libc6-dev dnsutils python3 curl shunit2 >/dev/null
 elif command -v apk >/dev/null; then
-  apk add -q $cc_pkg make musl-dev linux-headers bind-tools curl shunit2
+  apk add -q $cc_pkg make musl-dev linux-headers bind-tools python3 curl shunit2
 elif command -v dnf >/dev/null; then
   # Some images have curl-minimal, which lacks TFTP, hence the tftp client.
   dnf install -y -q $cc_pkg make glibc-devel bind-utils findutils tftp \
-    shunit2
+    python3 shunit2
 elif command -v zypper >/dev/null; then
   zypper -n -q install $cc_pkg make glibc-devel bind-utils findutils gawk \
-    tftp curl shunit2
+    tftp python3 curl shunit2
 elif command -v pacman >/dev/null; then
-  pacman -Syu --noconfirm --needed -q $cc_pkg make bind curl shunit2
+  pacman -Syu --noconfirm --needed -q $cc_pkg make bind python curl shunit2
 else
   echo "Don't know how to install packages on $PRETTY_NAME" >&2
   exit 1

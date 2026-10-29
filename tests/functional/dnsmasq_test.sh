@@ -12,49 +12,14 @@
 #
 #   DNSMASQ=src/dnsmasq tests/functional/dnsmasq_test.sh
 #
-# Needs dig and shunit2 2.1.6 or later. shunit2 is found on the PATH, in
-# /usr/share/shunit2, or wherever SHUNIT2 points. Tests that need root
-# (TFTP binds port 69) are skipped when not running as root.
+# Needs dig and shunit2; see lib.sh. Tests that need root (TFTP binds
+# port 69) are skipped when not running as root.
 
 # NAME_PORT and NAME_PID are assigned by start_dnsmasq with eval.
 # shellcheck disable=SC2154
 
 TOP=$(cd "$(dirname "$0")/../.." && pwd)
 . "$TOP/tests/functional/lib.sh"
-
-oneTimeSetUp()
-{
-  if [ ! -x "$DNSMASQ" ]; then
-    echo "dnsmasq binary $DNSMASQ not found; build it first." >&2
-    exit 1
-  fi
-  if ! command -v "$DIG" >/dev/null 2>&1; then
-    echo "$DIG not found; install dig (bind-tools/dnsutils)." >&2
-    exit 1
-  fi
-  if ! shunit2_at_least 2 1 6; then
-    echo "shunit2 ${SHUNIT_VERSION:-(unknown version)} is too old, 2.1.6 or later is needed." >&2
-    exit 1
-  fi
-  "$DNSMASQ" --version | head -n 2
-}
-
-setUp()
-{
-  SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/dnsmasq-test.XXXXXX")
-  _instances=0
-}
-
-tearDown()
-{
-  stop_all
-  # shunit2 has no public "did this test fail" hook; this variable has
-  # been stable across 2.1.x.
-  if [ "${__shunit_testSuccess:-0}" != "${SHUNIT_TRUE:-0}" ]; then
-    dump_logs
-  fi
-  rm -rf "$SCRATCH"
-}
 
 # An upstream server for the forwarding tests: another dnsmasq, which
 # answers authoritatively for a few names.
@@ -498,48 +463,4 @@ EOF
   assertFalse "no escape from tftp-root" $?
 }
 
-# shunit2_at_least MAJOR MINOR PATCH: true if the shunit2 sourced is that
-# version or later.
-shunit2_at_least()
-{
-  # shellcheck disable=SC2046
-  set -- "$@" $(echo "${SHUNIT_VERSION:-0}" | sed 's/[^0-9.].*//; s/\./ /g')
-  [ "${4:-0}" -ne "$1" ] && { [ "${4:-0}" -gt "$1" ]; return; }
-  [ "${5:-0}" -ne "$2" ] && { [ "${5:-0}" -gt "$2" ]; return; }
-  [ "${6:-0}" -ge "$3" ]
-}
-
-# List the tests ourselves rather than leave it to shunit2, which finds
-# them with egrep and xargs and, if either is missing, runs nothing and
-# reports OK. suite() is honoured by every 2.1.x release.
-suite()
-{
-  _tests=$(sed -n 's/^\(test[A-Za-z0-9_]*\)().*/\1/p' "$0")
-  if [ -z "$_tests" ]; then
-    echo "no tests found in $0." >&2
-    exit 1
-  fi
-  for _t in $_tests; do
-    suite_addTest "$_t"
-  done
-}
-
-for tool in awk sed grep cksum mktemp; do
-  if ! command -v $tool >/dev/null 2>&1; then
-    echo "$tool not found." >&2
-    exit 1
-  fi
-done
-
-if [ -n "$SHUNIT2" ]; then
-  :
-elif command -v shunit2 >/dev/null 2>&1; then
-  SHUNIT2=$(command -v shunit2)
-elif [ -f /usr/share/shunit2/shunit2 ]; then
-  SHUNIT2=/usr/share/shunit2/shunit2
-else
-  echo "shunit2 not found; install it or set SHUNIT2." >&2
-  exit 1
-fi
-# shellcheck disable=SC1090
-. "$SHUNIT2"
+run_suite "$@"

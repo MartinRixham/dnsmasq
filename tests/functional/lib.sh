@@ -1,8 +1,12 @@
-# Helpers for the functional tests. Sourced by dnsmasq_test.sh.
+# Helpers and shunit2 hooks for the functional test suites, which source
+# this and end by calling run_suite.
 #
 # Each test gets its own scratch directory and starts one or more dnsmasq
 # instances listening on 127.0.0.1 on unprivileged ports, so the tests can
 # run as an ordinary user and alongside any system resolver.
+#
+# shunit2 2.1.6 or later is needed. It is found on the PATH, in
+# /usr/share/shunit2, or wherever SHUNIT2 points.
 
 DNSMASQ=${DNSMASQ:-$TOP/src/dnsmasq}
 DIG=${DIG:-dig}
@@ -105,7 +109,16 @@ stop_all()
 {
   [ -f "$SCRATCH/pids" ] || return 0
   while read -r _name _pid; do
-    kill "$_pid" 2>/dev/null && wait "$_pid" 2>/dev/null
+    kill "$_pid" 2>/dev/null || continue
+    # A dnsmasq stuck in a loop never gets round to handling SIGTERM.
+    _tries=0
+    while kill -0 "$_pid" 2>/dev/null && [ $_tries -lt 50 ]; do
+      sleep 0.1; _tries=$((_tries + 1))
+    done
+    if kill -9 "$_pid" 2>/dev/null; then
+      fail "$_name ignored SIGTERM; killed it"
+    fi
+    wait "$_pid" 2>/dev/null
   done < "$SCRATCH/pids"
   rm -f "$SCRATCH/pids"
 }
@@ -139,4 +152,103 @@ dump_logs()
     echo "----- ${_f##*/} -----"
     cat "$_f"
   done
+}
+
+oneTimeSetUp()
+{
+  if [ ! -x "$DNSMASQ" ]; then
+    echo "dnsmasq binary $DNSMASQ not found; build it first." >&2
+    exit 1
+  fi
+  if ! command -v "$DIG" >/dev/null 2>&1; then
+    echo "$DIG not found; install dig (bind-tools/dnsutils)." >&2
+    exit 1
+  fi
+  if ! shunit2_at_least 2 1 6; then
+    echo "shunit2 ${SHUNIT_VERSION:-(unknown version)} is too old, 2.1.6 or later is needed." >&2
+    exit 1
+  fi
+  "$DNSMASQ" --version | head -n 2
+  if command -v suiteSetUp >/dev/null; then
+    suiteSetUp
+  fi
+}
+
+setUp()
+{
+  SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/dnsmasq-test.XXXXXX")
+  _instances=0
+}
+
+tearDown()
+{
+  stop_all
+  # A sanitizer build reports to stderr but needn't exit, so look.
+  for _f in "$SCRATCH"/*.err; do
+    if grep -q -e 'Sanitizer' -e 'runtime error:' "$_f" 2>/dev/null; then
+      fail "sanitizer report from ${_f##*/}"
+    fi
+  done
+  # shunit2 has no public "did this test fail" hook; this variable has
+  # been stable across 2.1.x.
+  if [ "${__shunit_testSuccess:-0}" != "${SHUNIT_TRUE:-0}" ]; then
+    dump_logs
+  fi
+  rm -rf "$SCRATCH"
+}
+
+# shunit2_at_least MAJOR MINOR PATCH: true if the shunit2 sourced is that
+# version or later.
+shunit2_at_least()
+{
+  # shellcheck disable=SC2046
+  set -- "$@" $(echo "${SHUNIT_VERSION:-0}" | sed 's/[^0-9.].*//; s/\./ /g')
+  [ "${4:-0}" -ne "$1" ] && { [ "${4:-0}" -gt "$1" ]; return; }
+  [ "${5:-0}" -ne "$2" ] && { [ "${5:-0}" -gt "$2" ]; return; }
+  [ "${6:-0}" -ge "$3" ]
+}
+
+# List the tests ourselves rather than leave it to shunit2, which finds
+# them with egrep and xargs and, if either is missing, runs nothing and
+# reports OK. suite() is honoured by every 2.1.x release.
+suite()
+{
+  _tests=${_run_tests:-$(sed -n 's/^\(test[A-Za-z0-9_]*\)().*/\1/p' "$0")}
+  if [ -z "$_tests" ]; then
+    echo "no tests found in $0." >&2
+    exit 1
+  fi
+  for _t in $_tests; do
+    suite_addTest "$_t"
+  done
+}
+
+# run_suite [-- TEST...]: find shunit2 and run the tests defined by the
+# calling script, or just the named ones.
+run_suite()
+{
+  [ "${1:-}" = "--" ] && shift
+  _run_tests="$*"
+
+  for _tool in awk sed grep cksum mktemp; do
+    if ! command -v $_tool >/dev/null 2>&1; then
+      echo "$_tool not found." >&2
+      exit 1
+    fi
+  done
+
+  if [ -n "${SHUNIT2:-}" ]; then
+    :
+  elif command -v shunit2 >/dev/null 2>&1; then
+    SHUNIT2=$(command -v shunit2)
+  elif [ -f /usr/share/shunit2/shunit2 ]; then
+    SHUNIT2=/usr/share/shunit2/shunit2
+  else
+    echo "shunit2 not found; install it or set SHUNIT2." >&2
+    exit 1
+  fi
+  # Leave no arguments for shunit2 to parse; suite() picks the tests.
+  set --
+  # shellcheck disable=SC1090
+  . "$SHUNIT2"
 }
