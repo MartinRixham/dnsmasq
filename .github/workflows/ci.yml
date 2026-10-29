@@ -85,9 +85,6 @@ jobs:
   sanitizers:
     name: make check (ASan + UBSan)
     runs-on: ubuntu-latest
-    # Advisory until the existing reports are fixed: a misaligned load
-    # in cache.c and a leak in test_canonicalise.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
 

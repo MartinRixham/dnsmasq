@@ -1585,6 +1585,7 @@ void cache_reload(void)
   struct name_list *nl;
   struct cname *a;
   struct crec lrec;
+  union all_addr addr;
   struct mx_srv_record *mx;
   struct txt_record *txt;
   struct interface_name *intr;
@@ -1684,7 +1685,9 @@ void cache_reload(void)
 	    cache->name.namep = nl->name;
 	    cache->ttd = hr->ttl;
 	    cache->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV4 | F_NAMEP | F_CONFIG;
-	    add_hosts_entry(cache, (union all_addr *)&hr->addr, INADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
+	    /* Copy: host_record fields aren't aligned for union all_addr. */
+	    memcpy(&addr, &hr->addr, INADDRSZ);
+	    add_hosts_entry(cache, &addr, INADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
 	  }
 
 	if ((hr->flags & HR_6) &&
@@ -1693,7 +1696,8 @@ void cache_reload(void)
 	    cache->name.namep = nl->name;
 	    cache->ttd = hr->ttl;
 	    cache->flags = F_HOSTS | F_IMMORTAL | F_FORWARD | F_REVERSE | F_IPV6 | F_NAMEP | F_CONFIG;
-	    add_hosts_entry(cache, (union all_addr *)&hr->addr6, IN6ADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
+	    memcpy(&addr, &hr->addr6, IN6ADDRSZ);
+	    add_hosts_entry(cache, &addr, IN6ADDRSZ, SRC_CONFIG, (struct crec **)daemon->packet, revhashsz);
 	  }
       }
 	

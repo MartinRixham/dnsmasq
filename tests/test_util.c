@@ -55,7 +55,9 @@ START_TEST(test_canonicalise) {
   strcpy(label + 64, ".com");
   ck_assert_ptr_null(canonicalise(label, &nomem));
   label[63] = '.';
-  ck_assert_ptr_nonnull(canonicalise(label, &nomem));
+  out = canonicalise(label, &nomem);
+  ck_assert_ptr_nonnull(out);
+  free(out);
 }
 END_TEST
 
