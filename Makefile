@@ -108,6 +108,10 @@ check : $(BUILDDIR)
  -f $(top)/Makefile dnsmasq_test
 	cd $(BUILDDIR) && ./dnsmasq_test
 
+# Functional tests: run the built daemon and query it. Needs dig and shunit2.
+check-functional : all
+	DNSMASQ=$(top)/$(BUILDDIR)/dnsmasq $(SHELL) $(top)/tests/functional/dnsmasq_test.sh
+
 mostly_clean :
 	rm -f $(BUILDDIR)/*.mo $(BUILDDIR)/*.pot 
 	rm -f $(BUILDDIR)/.copts_* $(BUILDDIR)/*.o $(BUILDDIR)/dnsmasq.a $(BUILDDIR)/dnsmasq
@@ -202,4 +206,4 @@ dnsmasq.pot : $(objs:.o=.c) $(hdrs)
 %.mo : $(top)/$(PO)/%.po dnsmasq.pot
 	$(MSGMERGE) -o - $(top)/$(PO)/$*.po dnsmasq.pot | $(MSGFMT) -o $*.mo -
 
-.PHONY : all check clean mostly_clean install install-common all-i18n install-i18n merge baseline bloatcheck
+.PHONY : all check check-functional clean mostly_clean install install-common all-i18n install-i18n merge baseline bloatcheck

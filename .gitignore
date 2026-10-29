@@ -8,3 +8,4 @@ src/.copts_*
 contrib/lease-tools/dhcp_lease_time
 contrib/lease-tools/dhcp_release
 contrib/lease-tools/dhcp_release6
+compile_flags.txt

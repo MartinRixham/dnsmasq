@@ -60,6 +60,20 @@ jobs:
           ./src/dnsmasq --version
           ./src/dnsmasq --test --conf-file=dnsmasq.conf.example
 
+      # As an ordinary user, so this also checks the unprivileged paths.
+      - name: Functional tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dnsutils dbus \
+            curl shunit2
+          make check-functional CC=${{ matrix.cc }} COPTS="$COPTS" LUA=lua5.4
+
+      # Again as root, for the tests that skip without it (TFTP binds
+      # port 69, --enable-dbus needs CAP_NET_RAW).
+      - name: Functional tests as root
+        run: |
+          sudo make check-functional CC=${{ matrix.cc }} COPTS="$COPTS" LUA=lua5.4
+
   check:
     name: make check (${{ matrix.cc }}, ${{ matrix.config }})
     runs-on: ubuntu-latest
@@ -100,6 +114,65 @@ jobs:
           make -j"$(nproc)" CC=clang \
             CFLAGS="-Wall -W -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
             LDFLAGS="-fsanitize=address,undefined" check
+
+  # Build and run the functional tests on a spread of distributions:
+  # glibc and musl, gcc and clang, old and new toolchains, 32-bit, and a
+  # big-endian architecture. Runs as root in the container, so the TFTP
+  # test runs too.
+  functional:
+    name: functional (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 13
+            image: debian:trixie
+          - name: Ubuntu 22.04
+            image: ubuntu:22.04
+          - name: Fedora
+            image: fedora:latest
+          - name: openSUSE Tumbleweed
+            image: opensuse/tumbleweed:latest
+          - name: Arch Linux, clang
+            image: archlinux:latest
+            cc: clang
+          - name: Alpine, musl
+            image: alpine:latest
+          - name: Debian i386
+            image: debian:trixie
+            platform: linux/386
+            # Docker's default seccomp profile on the runner blocks a
+            # syscall made by 32-bit glibc's resolver, so no name lookup
+            # in the container works (apt-get update fails).
+            docker_opts: --security-opt seccomp=unconfined
+          - name: Alpine arm64
+            image: alpine:latest
+            platform: linux/arm64
+            qemu: arm64
+          - name: Debian s390x, big-endian
+            image: debian:trixie
+            platform: linux/s390x
+            qemu: s390x
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        if: matrix.qemu
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.qemu }}
+
+      - name: Build and test in ${{ matrix.image }}
+        run: |
+          docker run --rm \
+            ${{ matrix.platform && format('--platform {0}', matrix.platform) || '' }} \
+            ${{ matrix.docker_opts }} \
+            -e CC=${{ matrix.cc || 'gcc' }} \
+            -v "$PWD:/src:ro" \
+            ${{ matrix.image }} \
+            sh /src/tests/functional/container-test.sh
 
   i18n:
     name: build (i18n)
