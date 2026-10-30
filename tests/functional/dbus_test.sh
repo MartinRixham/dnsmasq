@@ -428,6 +428,40 @@ testConfiguredServersKept()
   assertEquals "from the config" "10.1.1.1" "$(query main intranet.corp.test)"
 }
 
+testBadServersRejected()
+{
+  need_dbus || return 0
+  start_upstream || return
+  start_forwarder || return
+
+  dbus_call SetDomainServers \
+    array:string:"/example.test/127.0.0.1#$upstream_PORT" > /dev/null
+
+  out=$(dbus_call SetDomainServers array:string:"/one.test/192.0.2.1#port")
+  assert_contains "$out" "org.freedesktop.DBus.Error.InvalidArgs"
+  assert_contains "$out" "Invalid IP address '192.0.2.1#port': bad port"
+  out=$(dbus_call SetDomainServers array:string:"one.test/192.0.2.1")
+  assert_contains "$out" "No domain terminator"
+  out=$(dbus_call SetServersEx array:string:192.0.2.1)
+  assert_contains "$out" "Expected array of string arrays"
+  out=$(dbus_call SetServers)
+  assert_contains "$out" "InvalidArgs"
+
+  if command -v "$GDBUS" >/dev/null 2>&1; then
+    out=$(gdbus_call SetServersEx "[['192.0.2.1#99999', 'bad.test']]")
+    assert_contains "names the address" "$out" \
+      "Invalid IP address '192.0.2.1#99999': bad port"
+    out=$(gdbus_call SetDomainServers "['']")
+    assert_contains "$out" "Empty string"
+    out=$(gdbus_call SetServersEx "[@as []]")
+    assert_contains "$out" "Expected IP address"
+  fi
+
+  # Still alive and answering.
+  assertEquals "\"dnsmasq-$(dnsmasq_version)\"" \
+    "$(query main version.bind CH TXT)"
+}
+
 #
 # Options
 #

@@ -416,7 +416,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 		   {
 		     error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 							   "Invalid IP address '%s': %s",
-							   str, addr_err);
+							   str_addr, addr_err);
 		     break;
 		   }
 		 
@@ -426,7 +426,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 		       {
 			 error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 							       "Invalid IP address '%s': %s",
-							       str, addr_err);
+							       str_addr, addr_err);
 			 break;
 		       }
 		     
@@ -451,7 +451,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	      {
 		error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 						      "Invalid IP address '%s': %s",
-						      str, addr_err);
+						      str_addr, addr_err);
 		break;
 	      }
 	    
@@ -461,7 +461,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 		  {
 		    error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 							  "Invalid IP address '%s': %s",
-							  str, addr_err);
+							  str_addr, addr_err);
 		    break;
 		  }
 		

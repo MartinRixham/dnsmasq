@@ -394,6 +394,38 @@ START_TEST(test_set_servers_ex_wrong_type) {
 }
 END_TEST
 
+START_TEST(test_set_servers_ex_bad_groups) {
+  static const char *const empty[] = {NULL, NULL};
+  static const char *const blank[] = {"", "x.test", NULL, NULL};
+  static const char *const bad[] = {"192.0.2.1", NULL, "192.0.2.2#99999",
+                                    "bad.test", NULL, NULL};
+
+  /* An empty inner array: built by hand, as call_servers_ex() can't
+     express one. */
+  DBusMessage *msg = new_call("SetServersEx");
+  DBusMessageIter iter, outer, inner;
+
+  dbus_message_iter_init_append(msg, &iter);
+  dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "as", &outer);
+  dbus_message_iter_open_container(&outer, DBUS_TYPE_ARRAY,
+                                   DBUS_TYPE_STRING_AS_STRING, &inner);
+  dbus_message_iter_close_container(&outer, &inner);
+  dbus_message_iter_close_container(&iter, &outer);
+  assert_invalid_args(dispatch(msg), "Expected IP address");
+
+  /* An empty outer array is fine, and removes all DBus servers. */
+  assert_ok(call_servers_ex(empty));
+  ck_assert_int_eq(count_servers(SERV_FROM_DBUS), 0);
+
+  assert_invalid_args(call_servers_ex(blank), "Empty IP address");
+  assert_invalid_args(call_servers_ex(bad),
+                      "Invalid IP address '192.0.2.2#99999': bad port");
+
+  /* The command line server survives all of that. */
+  ck_assert_ptr_nonnull(find_server("", "192.0.2.53", NAMESERVER_PORT));
+}
+END_TEST
+
 /*
  * SetDomainServers: an array of strings in the format of --server.
  */
@@ -896,6 +928,7 @@ Suite *dbus_suite(void) {
   tcase_add_test(tc, test_set_servers_stops_at_other_types);
   tcase_add_test(tc, test_set_servers_ex);
   tcase_add_test(tc, test_set_servers_ex_wrong_type);
+  tcase_add_test(tc, test_set_servers_ex_bad_groups);
   tcase_add_test(tc, test_set_domain_servers);
   tcase_add_test(tc, test_set_domain_servers_errors);
   suite_add_tcase(s, tc);
