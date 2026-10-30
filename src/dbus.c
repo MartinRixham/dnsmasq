@@ -570,8 +570,8 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
     
   dbus_message_iter_recurse(&iter, &array_iter);
   dbus_message_iter_get_fixed_array(&array_iter, &hostname, &hostname_len);
-  tmp = memchr(hostname, '\0', hostname_len);
-  if (tmp)
+  /* hostname is NULL if the array is empty. */
+  if (hostname_len != 0 && (tmp = memchr(hostname, '\0', hostname_len)))
     {
       if (tmp == &hostname[hostname_len - 1])
 	hostname_len--;

@@ -667,6 +667,18 @@ testAddDhcpLease()
     "$(signal_args DhcpLeaseUpdated)"
 }
 
+testAddDhcpLeaseNoHostname()
+{
+  need_dbus || return 0
+  need_dhcp || return 0
+  start_dhcp || return
+
+  out=$(dbus_call AddDhcpLease string:192.0.2.151 string:00:23:45:67:89:ac \
+          array:byte: array:byte: uint32:3600 uint32:0 boolean:false)
+  assert_not_contains "$out" "Error"
+  assert_contains "$(cat "$SCRATCH/leases")" "00:23:45:67:89:ac 192.0.2.151 * *"
+}
+
 testDeleteDhcpLease()
 {
   need_dbus || return 0

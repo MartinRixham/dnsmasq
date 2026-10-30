@@ -805,6 +805,16 @@ START_TEST(test_add_lease) {
 }
 END_TEST
 
+START_TEST(test_add_lease_no_hostname) {
+  struct dhcp_lease *lease;
+
+  assert_ok(add_lease("192.0.2.151", "00:23:45:67:89:ab", ""));
+  lease = find_lease4("192.0.2.151");
+  ck_assert_ptr_nonnull(lease);
+  ck_assert_ptr_null(lease->hostname);
+}
+END_TEST
+
 START_TEST(test_add_lease_dhcp_off) {
   /* dbus_setup(), so no DHCP. */
   assert_invalid_args(add_lease("192.0.2.150", "00:23:45:67:89:ab", "x"),
@@ -958,6 +968,7 @@ Suite *dbus_suite(void) {
   tc = tcase_create("leases");
   tcase_add_checked_fixture(tc, dhcp_setup, NULL);
   tcase_add_test(tc, test_add_lease);
+  tcase_add_test(tc, test_add_lease_no_hostname);
 #ifdef HAVE_DHCP6
   tcase_add_test(tc, test_add_lease6);
 #endif
