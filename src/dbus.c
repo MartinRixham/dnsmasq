@@ -610,6 +610,13 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
 
   dbus_message_iter_get_basic(&iter, &is_temporary);
 
+  /* Check this before finding or allocating a lease, so that a bad
+     address doesn't leave a half-made lease behind. */
+  hw_len = parse_hex((char*)hwaddr, dhcp_chaddr, DHCP_CHADDR_MAX, NULL, &hw_type);
+  if (hw_len < 0)
+    return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
+					 "Invalid HW address '%s'", hwaddr);
+
   if (inet_pton(AF_INET, ipaddr, &addr.addr4))
     {
       if (!daemon->dhcp)
@@ -645,11 +652,6 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
     return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 					 "unable to allocate lease for IP address '%s'", ipaddr);
   
-  hw_len = parse_hex((char*)hwaddr, dhcp_chaddr, DHCP_CHADDR_MAX, NULL, &hw_type);
-  if (hw_len < 0)
-    return dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
-					 "Invalid HW address '%s'", hwaddr);
-
   if (hw_type == 0 && hw_len != 0)
     hw_type = ARPHRD_ETHER;
   

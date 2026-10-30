@@ -837,6 +837,41 @@ START_TEST(test_add_lease_hostname_not_terminated) {
 }
 END_TEST
 
+START_TEST(test_add_lease_errors) {
+  static const unsigned char clid[] = {1};
+  const char *ip = "192.0.2.160";
+  DBusMessage *msg;
+
+  assert_invalid_args(call_empty("AddDhcpLease"), "Failed to initialize");
+
+  msg = new_call("AddDhcpLease");
+  append_string(msg, ip);
+  assert_invalid_args(dispatch(msg), "second argument");
+
+  msg = new_call("AddDhcpLease");
+  append_string(msg, ip);
+  append_string(msg, "00:23:45:67:89:ab");
+  append_string(msg, "hostname");
+  assert_invalid_args(dispatch(msg), "third argument");
+
+  assert_invalid_args(add_lease("not-an-ip", "00:23:45:67:89:ab", "x"),
+                      "Invalid IP address 'not-an-ip'");
+  assert_invalid_args(add_lease(ip, "zz:zz", "x"), "Invalid HW address");
+  assert_invalid_args(dispatch(new_lease_call(ip, "00:23:45:67:89:ab",
+                                              "a\0b", 3, clid, 1, 3600, 0,
+                                              FALSE)),
+                      "embedded NUL");
+  assert_invalid_args(dispatch(new_lease_call(ip, "00:23:45:67:89:ab", "x", 1,
+                                              clid, 1, 3600, 7, FALSE)),
+                      "must be zero for IPv4");
+  assert_invalid_args(dispatch(new_lease_call(ip, "00:23:45:67:89:ab", "x", 1,
+                                              clid, 1, 3600, 0, TRUE)),
+                      "must be zero for IPv4");
+
+  ck_assert_ptr_null(find_lease4(ip));
+}
+END_TEST
+
 START_TEST(test_add_lease_dhcp_off) {
   /* dbus_setup(), so no DHCP. */
   assert_invalid_args(add_lease("192.0.2.150", "00:23:45:67:89:ab", "x"),
@@ -992,6 +1027,7 @@ Suite *dbus_suite(void) {
   tcase_add_test(tc, test_add_lease);
   tcase_add_test(tc, test_add_lease_no_hostname);
   tcase_add_test(tc, test_add_lease_hostname_not_terminated);
+  tcase_add_test(tc, test_add_lease_errors);
 #ifdef HAVE_DHCP6
   tcase_add_test(tc, test_add_lease6);
 #endif

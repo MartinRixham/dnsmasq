@@ -719,6 +719,27 @@ testDeleteDhcpLease()
   assert_contains "$out" "Invalid IP address 'nonsense'"
 }
 
+testBadDhcpLeasesRejected()
+{
+  need_dbus || return 0
+  need_dhcp || return 0
+  start_dhcp || return
+
+  out=$(add_lease 192.0.2.170 zz:zz bad)
+  assert_contains "$out" "Invalid HW address 'zz:zz'"
+  out=$(add_lease not-an-ip 00:23:45:67:89:ab bad)
+  assert_contains "$out" "Invalid IP address 'not-an-ip'"
+  out=$(dbus_call AddDhcpLease string:192.0.2.170 string:00:23:45:67:89:ab \
+          array:byte:98 array:byte: uint32:3600 uint32:7 boolean:false)
+  assert_contains "$out" "must be zero for IPv4"
+  out=$(dbus_call AddDhcpLease string:192.0.2.170)
+  assert_contains "$out" "Expected string as second argument"
+
+  # None of that made a lease.
+  out=$(dbus_call DeleteDhcpLease string:192.0.2.170)
+  assert_contains "no lease" "$out" "boolean false"
+}
+
 testAddDhcpLeaseWithoutDhcp()
 {
   need_dbus || return 0
