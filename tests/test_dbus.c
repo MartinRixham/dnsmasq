@@ -299,6 +299,26 @@ START_TEST(test_set_servers) {
 }
 END_TEST
 
+START_TEST(test_set_servers_local) {
+  DBusMessage *msg = new_call("SetServers");
+
+  /* 0.0.0.0 means answer locally, like --local. */
+  append_ipv4(msg, "0.0.0.0");
+  append_string(msg, "local.test");
+  assert_ok(dispatch(msg));
+
+  ck_assert_ptr_nonnull(find_local("local.test"));
+  ck_assert(find_local("local.test")->flags & SERV_FROM_DBUS);
+  ck_assert_int_eq(count_servers(SERV_FROM_DBUS), 0);
+
+  /* And is replaced like any other. */
+  msg = new_call("SetServers");
+  append_ipv4(msg, "192.0.2.1");
+  assert_ok(dispatch(msg));
+  ck_assert_ptr_null(find_local("local.test"));
+}
+END_TEST
+
 START_TEST(test_set_servers_replaces) {
   DBusMessage *msg = new_call("SetServers");
 
@@ -923,6 +943,7 @@ Suite *dbus_suite(void) {
   tc = tcase_create("servers");
   tcase_add_checked_fixture(tc, dbus_setup, NULL);
   tcase_add_test(tc, test_set_servers);
+  tcase_add_test(tc, test_set_servers_local);
   tcase_add_test(tc, test_set_servers_replaces);
   tcase_add_test(tc, test_set_servers_short_ipv6);
   tcase_add_test(tc, test_set_servers_stops_at_other_types);

@@ -364,6 +364,30 @@ testSurvivesBusExit()
 # Upstream servers
 #
 
+testSetServers()
+{
+  need_dbus || return 0
+  start_forwarder || return
+
+  # IPv4 addresses are UINT32s, IPv6 16 BYTEs, each followed by domains.
+  # 192.0.2.1 is 3221225985; 2001:db8::1 the bytes below.
+  out=$(dbus_call SetServers uint32:3221225985 \
+          uint32:3221225986 string:one.test string:two.test \
+          byte:32 byte:1 byte:13 byte:184 byte:0 byte:0 byte:0 byte:0 \
+          byte:0 byte:0 byte:0 byte:0 byte:0 byte:0 byte:0 byte:1 \
+          string:six.test)
+  assert_not_contains "$out" "Error"
+  log=$(cat "$SCRATCH/main.log")
+  assert_contains "$log" "using nameserver 192.0.2.1#53"
+  assert_contains "$log" "using nameserver 192.0.2.2#53 for domain one.test"
+  assert_contains "$log" "using nameserver 192.0.2.2#53 for domain two.test"
+  assert_contains "$log" "using nameserver 2001:db8::1#53 for domain six.test"
+
+  # 0.0.0.0 makes a domain local, as --local.
+  dbus_call SetServers uint32:0 string:local.test > /dev/null
+  assertEquals "NXDOMAIN" "$(rcode main host.local.test)"
+}
+
 testSetDomainServersForwards()
 {
   need_dbus || return 0

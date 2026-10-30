@@ -170,7 +170,7 @@ static DBusMessage* dbus_read_servers(DBusMessage *message)
   
   while (1)
     {
-      int skip = 0;
+      int skip = 0, flags = 0;
 
       if (dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_UINT32)
 	{
@@ -187,6 +187,10 @@ static DBusMessage* dbus_read_servers(DBusMessage *message)
 	  addr.in.sin_port = htons(NAMESERVER_PORT);
 	  source_addr.in.sin_addr.s_addr = INADDR_ANY;
 	  source_addr.in.sin_port = htons(daemon->query_port);
+
+	  /* 0.0.0.0 for server address == NULL, for Dbus */
+	  if (a == 0)
+	    flags = SERV_LITERAL_ADDRESS;
 	}
       else if (dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_BYTE)
 	{
@@ -236,7 +240,7 @@ static DBusMessage* dbus_read_servers(DBusMessage *message)
 	  domain = NULL;
 	
 	if (!skip)
-	  add_update_server(SERV_FROM_DBUS, &addr, &source_addr, NULL, domain, NULL);
+	  add_update_server(flags | SERV_FROM_DBUS, &addr, &source_addr, NULL, domain, NULL);
      
       } while (dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_STRING); 
     }
