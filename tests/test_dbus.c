@@ -815,6 +815,28 @@ START_TEST(test_add_lease_no_hostname) {
 }
 END_TEST
 
+START_TEST(test_add_lease_hostname_not_terminated) {
+  static const unsigned char clid[] = {1, 2, 3};
+  struct dhcp_lease *lease;
+
+  /* The hostname arrives as a byte array, with no terminating NUL. With
+     a length which is a multiple of four, the bytes after it in the
+     message are the length of the clid array. */
+  assert_ok(dispatch(new_lease_call("192.0.2.152", "00:23:45:67:89:ab",
+                                    "four", 4, clid, sizeof(clid), 3600, 0,
+                                    FALSE)));
+  lease = find_lease4("192.0.2.152");
+  ck_assert_ptr_nonnull(lease);
+  ck_assert_str_eq(lease->hostname, "four");
+
+  /* A single trailing NUL is allowed. */
+  assert_ok(dispatch(new_lease_call("192.0.2.153", "00:23:45:67:89:ab",
+                                    "nul", 4, clid, sizeof(clid), 3600, 0,
+                                    FALSE)));
+  ck_assert_str_eq(find_lease4("192.0.2.153")->hostname, "nul");
+}
+END_TEST
+
 START_TEST(test_add_lease_dhcp_off) {
   /* dbus_setup(), so no DHCP. */
   assert_invalid_args(add_lease("192.0.2.150", "00:23:45:67:89:ab", "x"),
@@ -969,6 +991,7 @@ Suite *dbus_suite(void) {
   tcase_add_checked_fixture(tc, dhcp_setup, NULL);
   tcase_add_test(tc, test_add_lease);
   tcase_add_test(tc, test_add_lease_no_hostname);
+  tcase_add_test(tc, test_add_lease_hostname_not_terminated);
 #ifdef HAVE_DHCP6
   tcase_add_test(tc, test_add_lease6);
 #endif

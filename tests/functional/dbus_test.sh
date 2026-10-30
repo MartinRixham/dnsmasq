@@ -679,6 +679,23 @@ testAddDhcpLeaseNoHostname()
   assert_contains "$(cat "$SCRATCH/leases")" "00:23:45:67:89:ac 192.0.2.151 * *"
 }
 
+testAddDhcpLeaseHostnames()
+{
+  need_dbus || return 0
+  need_dhcp || return 0
+  start_dhcp || return
+
+  # The hostname isn't NUL terminated in the message, and when its
+  # length is a multiple of four the next bytes are the clid's length.
+  add_lease 192.0.2.152 00:23:45:67:89:ad four 1,2,3 > /dev/null
+  assertEquals "192.0.2.152" "$(query main four.lan.test)"
+  assert_contains "$(cat "$SCRATCH/leases")" "192.0.2.152 four 01:02:03"
+
+  out=$(dbus_call AddDhcpLease string:192.0.2.153 string:00:23:45:67:89:ae \
+          array:byte:97,0,98 array:byte: uint32:3600 uint32:0 boolean:false)
+  assert_contains "$out" "embedded NUL"
+}
+
 testDeleteDhcpLease()
 {
   need_dbus || return 0

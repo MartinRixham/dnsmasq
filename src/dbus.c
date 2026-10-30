@@ -657,7 +657,18 @@ static DBusMessage *dbus_add_lease(DBusMessage* message)
                    clid_len, now, 0);
   lease_set_expires(lease, expires, now);
   if (hostname_len != 0)
-    lease_set_hostname(lease, hostname, 0, get_domain(lease->addr), NULL);
+    {
+      /* The byte array isn't NUL terminated. */
+      char *name = whine_malloc(hostname_len + 1);
+
+      if (name)
+	{
+	  memcpy(name, hostname, hostname_len);
+	  name[hostname_len] = 0;
+	  lease_set_hostname(lease, name, 0, get_domain(lease->addr), NULL);
+	  free(name);
+	}
+    }
   
   lease_update_file(now);
   lease_update_dns(0);
