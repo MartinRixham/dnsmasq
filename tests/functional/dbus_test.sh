@@ -364,6 +364,53 @@ testSurvivesBusExit()
 # Upstream servers
 #
 
+testSetDomainServersForwards()
+{
+  need_dbus || return 0
+  start_upstream || return
+  start_forwarder || return
+
+  assertEquals "no servers yet" "REFUSED" "$(rcode main www.example.test)"
+
+  out=$(dbus_call SetDomainServers \
+          array:string:"/example.test/corp.test/127.0.0.1#$upstream_PORT")
+  assert_not_contains "$out" "Error"
+  assertEquals "192.0.2.10" "$(query main www.example.test)"
+  # The port applies to every domain, not just the first.
+  assertEquals "10.1.1.1" "$(query main intranet.corp.test)"
+
+  # A new call replaces the old servers.
+  dbus_call SetDomainServers \
+    array:string:"/corp.test/127.0.0.1#$upstream_PORT",/example.test/ \
+    > /dev/null
+  assertEquals "10.1.1.1" "$(query main intranet.corp.test)"
+  assertEquals "now local" "NXDOMAIN" "$(rcode main www.example.test)"
+
+  # An empty array removes them all.
+  dbus_call SetDomainServers array:string: > /dev/null
+  assertEquals "REFUSED" "$(rcode main intranet.corp.test)"
+}
+
+testSetServersExForwards()
+{
+  need_dbus || return 0
+  need_gdbus || return 0
+  start_upstream || return
+  start_forwarder || return
+
+  out=$(gdbus_call SetServersEx \
+          "[['127.0.0.1#$upstream_PORT', 'example.test', 'corp.test'], ['0.0.0.0', 'local.test']]")
+  assertEquals "()" "$out"
+  assertEquals "192.0.2.10" "$(query main www.example.test)"
+  assertEquals "10.1.1.1" "$(query main intranet.corp.test)"
+  assertEquals "NXDOMAIN" "$(rcode main host.local.test)"
+
+  # An address with no domains is a default server.
+  gdbus_call SetServersEx "[['127.0.0.1#$upstream_PORT']]" > /dev/null
+  assertEquals "192.0.2.10" "$(query main www.example.test)"
+  assertEquals "no longer local" "REFUSED" "$(rcode main host.local.test)"
+}
+
 testConfiguredServersKept()
 {
   need_dbus || return 0

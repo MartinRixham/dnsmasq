@@ -98,6 +98,27 @@ static DBusMessage *call_strings(const char *method, const char *const *strs) {
   return dispatch(msg);
 }
 
+/* SetServersEx takes an array of arrays of strings. Each group is
+   NULL-terminated, and an extra NULL ends the list. */
+static DBusMessage *call_servers_ex(const char *const *groups) {
+  DBusMessage *msg = new_call("SetServersEx");
+  DBusMessageIter iter, outer, inner;
+
+  dbus_message_iter_init_append(msg, &iter);
+  dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY, "as", &outer);
+  while (*groups) {
+    dbus_message_iter_open_container(&outer, DBUS_TYPE_ARRAY,
+                                     DBUS_TYPE_STRING_AS_STRING, &inner);
+    for (; *groups; groups++)
+      dbus_message_iter_append_basic(&inner, DBUS_TYPE_STRING, groups);
+    dbus_message_iter_close_container(&outer, &inner);
+    groups++;
+  }
+  dbus_message_iter_close_container(&iter, &outer);
+
+  return dispatch(msg);
+}
+
 static void assert_ok(DBusMessage *reply) {
   if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
     const char *text = "";
@@ -151,6 +172,16 @@ static int count_servers(int flag) {
       count++;
 
   return count;
+}
+
+static struct server *find_local(const char *domain) {
+  struct server *serv;
+
+  for (serv = daemon->local_domains; serv; serv = serv->next)
+    if (hostname_isequal(serv->domain, domain))
+      return serv;
+
+  return NULL;
 }
 
 START_TEST(test_get_version) {
@@ -326,6 +357,25 @@ END_TEST
  * SetServersEx: an array of arrays of strings, address first.
  */
 
+START_TEST(test_set_servers_ex) {
+  static const char *const groups[] = {
+      "192.0.2.1#5353", "one.test", "two.test", NULL,
+      "2001:db8::2",    NULL,
+      "0.0.0.0",        "local.test", NULL,
+      NULL};
+
+  assert_ok(call_servers_ex(groups));
+
+  ck_assert_ptr_nonnull(find_server("one.test", "192.0.2.1", 5353));
+  ck_assert_ptr_nonnull(find_server("two.test", "192.0.2.1", 5353));
+  ck_assert_ptr_nonnull(find_server("", "2001:db8::2", NAMESERVER_PORT));
+
+  /* 0.0.0.0 means answer locally, like --local. */
+  ck_assert_ptr_nonnull(find_local("local.test"));
+  ck_assert(find_local("local.test")->flags & SERV_FROM_DBUS);
+}
+END_TEST
+
 START_TEST(test_set_servers_ex_wrong_type) {
   static const char *const strs[] = {"192.0.2.1", NULL};
 
@@ -347,6 +397,22 @@ END_TEST
 /*
  * SetDomainServers: an array of strings in the format of --server.
  */
+
+START_TEST(test_set_domain_servers) {
+  static const char *const strs[] = {"/one.test/two.test/192.0.2.1#5353",
+                                     "192.0.2.2", "/local.test/",
+                                     "/v6.test/2001:db8::3", NULL};
+
+  assert_ok(call_strings("SetDomainServers", strs));
+
+  ck_assert_ptr_nonnull(find_server("one.test", "192.0.2.1", 5353));
+  ck_assert_ptr_nonnull(find_server("two.test", "192.0.2.1", 5353));
+  ck_assert_ptr_nonnull(find_server("", "192.0.2.2", NAMESERVER_PORT));
+  ck_assert_ptr_nonnull(find_server("v6.test", "2001:db8::3", NAMESERVER_PORT));
+  ck_assert_ptr_nonnull(find_local("local.test"));
+  ck_assert_int_eq(count_servers(SERV_FROM_DBUS), 4);
+}
+END_TEST
 
 START_TEST(test_set_domain_servers_errors) {
   static const char *const empty[] = {"", NULL};
@@ -496,6 +562,62 @@ START_TEST(test_metrics) {
 
   assert_ok(call_empty("ClearMetrics"));
   ck_assert_str_eq(get_metric(name, buf, sizeof(buf)), "0");
+}
+END_TEST
+
+START_TEST(test_server_metrics) {
+  static const char *const strs[] = {"/one.test/two.test/192.0.2.1#5353",
+                                     NULL};
+  DBusMessage *reply;
+  DBusMessageIter iter, servers, dict;
+  struct server *serv;
+  char buf[64];
+  int count = 0, seen = 0;
+
+  assert_ok(call_strings("SetDomainServers", strs));
+  find_server("one.test", "192.0.2.1", 5353)->queries = 3;
+  find_server("two.test", "192.0.2.1", 5353)->queries = 4;
+  serv = find_server("", "192.0.2.53", NAMESERVER_PORT);
+  serv->queries = 5;
+  serv->nxdomain_replies = 1;
+
+  reply = call_empty("GetServerMetrics");
+  ck_assert_str_eq(dbus_message_get_signature(reply), "aa{ss}");
+  dbus_message_iter_init(reply, &iter);
+  dbus_message_iter_recurse(&iter, &servers);
+
+  /* One entry per address, so the two domains are summed. */
+  do {
+    const char *addr;
+
+    dbus_message_iter_recurse(&servers, &dict);
+    addr = dict_get(&dict, "address", buf, sizeof(buf));
+    ck_assert_ptr_nonnull(addr);
+    count++;
+
+    if (strcmp(addr, "192.0.2.1") == 0) {
+      dbus_message_iter_recurse(&servers, &dict);
+      ck_assert_str_eq(dict_get(&dict, "port", buf, sizeof(buf)), "5353");
+      dbus_message_iter_recurse(&servers, &dict);
+      ck_assert_str_eq(dict_get(&dict, "queries", buf, sizeof(buf)), "7");
+      seen |= 1;
+    } else if (strcmp(addr, "192.0.2.53") == 0) {
+      dbus_message_iter_recurse(&servers, &dict);
+      ck_assert_str_eq(dict_get(&dict, "port", buf, sizeof(buf)), "53");
+      dbus_message_iter_recurse(&servers, &dict);
+      ck_assert_str_eq(dict_get(&dict, "queries", buf, sizeof(buf)), "5");
+      dbus_message_iter_recurse(&servers, &dict);
+      ck_assert_str_eq(dict_get(&dict, "nxdomain", buf, sizeof(buf)), "1");
+      dbus_message_iter_recurse(&servers, &dict);
+      ck_assert_str_eq(dict_get(&dict, "failed_queries", buf, sizeof(buf)),
+                       "0");
+      seen |= 2;
+    }
+  } while (dbus_message_iter_next(&servers));
+
+  ck_assert_int_eq(seen, 3);
+  ck_assert_int_eq(count, 2);
+  dbus_message_unref(reply);
 }
 END_TEST
 
@@ -751,6 +873,7 @@ Suite *dbus_suite(void) {
   tcase_add_test(tc, test_bool_option_wrong_type);
   tcase_add_test(tc, test_filter_rr);
   tcase_add_test(tc, test_metrics);
+  tcase_add_test(tc, test_server_metrics);
 #ifdef HAVE_LOOP
   tcase_add_test(tc, test_loop_servers);
 #endif
@@ -771,7 +894,9 @@ Suite *dbus_suite(void) {
   tcase_add_test(tc, test_set_servers_replaces);
   tcase_add_test(tc, test_set_servers_short_ipv6);
   tcase_add_test(tc, test_set_servers_stops_at_other_types);
+  tcase_add_test(tc, test_set_servers_ex);
   tcase_add_test(tc, test_set_servers_ex_wrong_type);
+  tcase_add_test(tc, test_set_domain_servers);
   tcase_add_test(tc, test_set_domain_servers_errors);
   suite_add_tcase(s, tc);
 

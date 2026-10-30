@@ -274,7 +274,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
   DBusMessageIter iter, array_iter, string_iter;
   DBusMessage *error = NULL;
   const char *addr_err;
-  char *dup = NULL;
+  char *dup = NULL, *work = NULL;
   
   if (!dbus_message_iter_init(message, &iter))
     {
@@ -388,6 +388,13 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	  strcpy(str_addr, str);
 	}
 
+      /* parse_server() modifies its argument, so each call gets a fresh
+	 copy of the address, else the port is lost after the first domain. */
+      if (work)
+	free(work);
+      if (!(work = whine_malloc(strlen(str_addr)+1)))
+	break;
+
       if (strings)
 	{
 	  char *p;
@@ -405,7 +412,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	       add_update_server(SERV_LITERAL_ADDRESS | SERV_FROM_DBUS, &addr, &source_addr, interface, str_domain, NULL);
 	     else
 	       {
-		 if ((addr_err = parse_server(str_addr, &sdetails)))
+		 if ((addr_err = parse_server(strcpy(work, str_addr), &sdetails)))
 		   {
 		     error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 							   "Invalid IP address '%s': %s",
@@ -440,7 +447,7 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
 	      dbus_message_iter_get_basic(&string_iter, &str);
 	    dbus_message_iter_next (&string_iter);
 
-	    if ((addr_err = parse_server(str_addr, &sdetails)))
+	    if ((addr_err = parse_server(strcpy(work, str_addr), &sdetails)))
 	      {
 		error = dbus_message_new_error_printf(message, DBUS_ERROR_INVALID_ARGS,
 						      "Invalid IP address '%s': %s",
@@ -481,6 +488,8 @@ static DBusMessage* dbus_read_servers_ex(DBusMessage *message, int strings)
     
   if (dup)
     free(dup);
+  if (work)
+    free(work);
 
   return error;
 }
