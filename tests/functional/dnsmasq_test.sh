@@ -522,4 +522,54 @@ EOF
   assertFalse "no escape from tftp-root" $?
 }
 
+# dbus_call METHOD ARG...: call a method of the instance on the test bus.
+# dbus-send, unlike gdbus, doesn't hold SetServers to its introspected
+# signature, which doesn't match what it really takes.
+dbus_call()
+{
+  _method=$1; shift
+  dbus-send --bus="$BUS" --print-reply --reply-timeout=2000 \
+    --dest=uk.org.thekelleys.dnsmasq /uk/org/thekelleys/dnsmasq \
+    "uk.org.thekelleys.dnsmasq.$_method" "$@"
+}
+
+testDbusSetServersDropsInterface()
+{
+  has_feature DBus || { skip_test "built without DBus"; return; }
+  # --enable-dbus always needs CAP_NET_RAW, for servers it may be given.
+  is_root || { skip_test "needs root for --enable-dbus"; return; }
+  if ! command -v dbus-daemon >/dev/null || ! command -v dbus-send >/dev/null; then
+    skip_test "needs dbus-daemon and dbus-send"
+    return
+  fi
+
+  # A private bus standing in for the system bus. The session bus policy
+  # lets dnsmasq own its name.
+  BUS=unix:path=$SCRATCH/bus
+  dbus-daemon --session --address="$BUS" --nopidfile --fork \
+    --print-pid > "$SCRATCH/bus.pid" || { fail "dbus-daemon failed"; return; }
+  echo "dbus $(cat "$SCRATCH/bus.pid")" >> "$SCRATCH/pids"
+
+  printf 'no-resolv\nno-hosts\nenable-dbus\n' > "$SCRATCH/main.conf"
+  export DBUS_SYSTEM_BUS_ADDRESS="$BUS"
+  start_dnsmasq main; started=$?
+  unset DBUS_SYSTEM_BUS_ADDRESS
+  [ $started -eq 0 ] || return
+  tries=0
+  until dbus_call GetVersion >/dev/null 2>&1 || [ $tries -ge 50 ]; do
+    sleep 0.1; tries=$((tries + 1))
+  done
+
+  # As for a VPN's server: bound to its interface.
+  dbus_call SetDomainServers array:string:192.0.2.53@nosuchif0 >/dev/null
+  assertNotEquals "bound to interface" 0 \
+    "$(count_log main 'using nameserver 192.0.2.53#53(via nosuchif0)')"
+
+  # SetServers gives no interface and reuses the record set above, which
+  # mustn't keep its binding. (192.0.2.53 in network byte order.)
+  dbus_call SetServers uint32:3221226037 >/dev/null
+  assertNotEquals "not bound after SetServers" 0 \
+    "$(count_log main 'using nameserver 192.0.2.53#53$')"
+}
+
 run_suite "$@"

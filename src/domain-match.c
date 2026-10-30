@@ -762,8 +762,13 @@ int add_update_server(int flags,
       serv->uid = rand32();
 #endif      
 	  
+      /* A reused record may have described a different server: don't
+	 leave it bound to the old interface, or to its cached index. */
       if (interface)
 	safe_strncpy(serv->interface, interface, sizeof(serv->interface));
+      else
+	serv->interface[0] = 0;
+      serv->ifindex = 0;
       if (addr)
 	serv->addr = *addr;
       if (source_addr)

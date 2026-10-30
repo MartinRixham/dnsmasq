@@ -20,6 +20,32 @@
 
 static void domain_match_setup(void) { test_daemon_init(NULL); }
 
+static void make_addr(union mysockaddr *addr, const char *ip) {
+  memset(addr, 0, sizeof(*addr));
+  addr->in.sin_family = AF_INET;
+  addr->in.sin_port = htons(NAMESERVER_PORT);
+  ck_assert_int_eq(inet_pton(AF_INET, ip, &addr->in.sin_addr), 1);
+}
+
+/* Add a DBus server for domain, as a reload would: mark, add, cleanup. */
+static struct server *reload_dbus_server(const char *ip, const char *interface,
+                                         const char *domain) {
+  union mysockaddr addr, source_addr;
+
+  make_addr(&addr, ip);
+  memset(&source_addr, 0, sizeof(source_addr));
+  source_addr.in.sin_family = AF_INET;
+
+  mark_servers(SERV_FROM_DBUS);
+  ck_assert_int_eq(add_update_server(SERV_FROM_DBUS, &addr, &source_addr,
+                                     interface, domain, NULL),
+                   1);
+  cleanup_servers();
+
+  ck_assert_ptr_nonnull(daemon->servers_tail);
+  return daemon->servers_tail;
+}
+
 START_TEST(test_reuse_moves_to_tail) {
   struct server *a, *b;
 
@@ -135,6 +161,37 @@ START_TEST(test_add_local_address) {
   ck_assert_str_eq(serv->domain, "ads.example");
   ck_assert_int_eq(serv->flags, SERV_LITERAL_ADDRESS | SERV_4ADDR);
   ck_assert_uint_eq(serv->addr.s_addr, addr.addr4.s_addr);
+}
+END_TEST
+
+START_TEST(test_reuse_clears_interface) {
+  struct server *serv, *reused;
+
+  /* A server reached via a VPN interface, whose index has been cached. */
+  serv = reload_dbus_server("192.0.2.1", "tun0", "corp.example");
+  ck_assert_str_eq(serv->interface, "tun0");
+  serv->ifindex = 42;
+
+  /* Reloaded without an interface: the entry for the domain is reused,
+     but must not stay bound to the old interface. */
+  reused = reload_dbus_server("192.0.2.1", NULL, "corp.example");
+  ck_assert_ptr_eq(reused, serv);
+  ck_assert_str_eq(reused->interface, "");
+  ck_assert_uint_eq(reused->ifindex, 0);
+}
+END_TEST
+
+START_TEST(test_reuse_resets_ifindex) {
+  struct server *serv, *reused;
+
+  serv = reload_dbus_server("192.0.2.1", "tun0", "corp.example");
+  serv->ifindex = 42;
+
+  /* Now via a different interface: the cached index was for tun0. */
+  reused = reload_dbus_server("192.0.2.1", "tun1", "corp.example");
+  ck_assert_ptr_eq(reused, serv);
+  ck_assert_str_eq(reused->interface, "tun1");
+  ck_assert_uint_eq(reused->ifindex, 0);
 }
 END_TEST
 
@@ -692,6 +749,8 @@ Suite *domain_match_suite(void) {
   tcase_add_test(tc, test_mark_frees_local_domains);
   tcase_add_test(tc, test_add_domain_forms);
   tcase_add_test(tc, test_add_local_address);
+  tcase_add_test(tc, test_reuse_clears_interface);
+  tcase_add_test(tc, test_reuse_resets_ifindex);
   suite_add_tcase(s, tc);
 
   /* No fixture: each test has its own servers. */
