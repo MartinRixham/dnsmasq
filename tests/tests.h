@@ -28,6 +28,8 @@ Suite *option_suite(void);
 Suite *cache_suite(void);
 Suite *edns0_suite(void);
 Suite *dbus_suite(void);
+Suite *domain_match_suite(void);
+Suite *dnssec_suite(void);
 
 /* Run read_opts() on a minimal command line (no config file, no
    resolv.conf, no /etc/hosts) plus the NULL-terminated extra args, then

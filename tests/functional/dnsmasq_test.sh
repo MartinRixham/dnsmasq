@@ -370,6 +370,65 @@ EOF
 }
 
 #
+# DNSSEC validation
+#
+
+# dnssec_refused [OPTION...]: start a daemon with --dnssec and OPTIONs,
+# expecting it to refuse to start, and print what it said.
+dnssec_refused()
+{
+  port=$((PORT_BASE + 50))
+  out=$("$DNSMASQ" --no-resolv --no-hosts \
+    --user="$(id -un)" --group="$(id -gn)" \
+    --listen-address=127.0.0.1 --bind-interfaces --port="$port" \
+    --pid-file="$SCRATCH/daemon.pid" --dnssec "$@" 2>&1)
+  if [ $? -eq 0 ]; then
+    fail "started with --dnssec $*"
+    echo "daemon $(cat "$SCRATCH/daemon.pid")" >> "$SCRATCH/pids"
+  fi
+  echo "$out"
+}
+
+testDnssecConfigChecks()
+{
+  has_feature DNSSEC || { skip_test "built without DNSSEC"; return; }
+
+  # Without a root trust anchor the validator could loop forever.
+  assert_contains "$(dnssec_refused --conf-file=/dev/null)" \
+    "no root trust anchor"
+  assert_contains "$(dnssec_refused --conf-file=/dev/null \
+                       --trust-anchor=example.test,1,8,2,00)" \
+    "no root trust anchor"
+  # Validation needs room in the cache for keys.
+  assert_contains "$(dnssec_refused --conf-file="$TOP/trust-anchors.conf" \
+                       --cache-size=50)" \
+    "cannot reduce cache size"
+}
+
+testDnssecRejectsUnsignedUpstream()
+{
+  has_feature DNSSEC || { skip_test "built without DNSSEC"; return; }
+  start_upstream || return
+  cat > "$SCRATCH/main.conf" <<EOF
+no-resolv
+no-hosts
+dnssec
+conf-file=$TOP/trust-anchors.conf
+server=127.0.0.1#$upstream_PORT
+EOF
+  start_dnsmasq main || return
+
+  # The upstream signs nothing and knows nothing of the root zone, so
+  # nothing can be proved secure or insecure.
+  assertEquals "SERVFAIL" "$(rcode main www.example.test)"
+  assertEquals "validation logged" 1 \
+    "$(count_log main 'validation www.example.test is')"
+
+  # Checking disabled: the client does its own validation.
+  assertEquals "192.0.2.10" "$(query main +cd www.example.test)"
+}
+
+#
 # Process lifecycle
 #
 

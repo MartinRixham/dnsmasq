@@ -87,7 +87,8 @@ objs = cache.o rfc1035.o util.o option.o forward.o network.o \
 # Unit tests: everything except main(), which is renamed so the test
 # runner can provide its own.
 test_srcobjs = check_dnsmasq.o test_util.o test_rfc1035.o test_option.o \
-       test_cache.o test_edns0.o test_dbus.o
+       test_cache.o test_edns0.o test_dbus.o test_domain_match.o \
+       test_dnssec.o
 test_objs = $(filter-out dnsmasq.o,$(objs)) dnsmasq_main.o $(test_srcobjs)
 
 hdrs = dnsmasq.h config.h dhcp-protocol.h dhcp6-protocol.h \
