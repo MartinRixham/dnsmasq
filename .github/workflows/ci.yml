@@ -65,11 +65,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends dnsutils dbus \
-            curl shunit2
+            libglib2.0-bin curl shunit2
           make check-functional CC=${{ matrix.cc }} COPTS="$COPTS" LUA=lua5.4
 
       # Again as root, for the tests that skip without it (TFTP binds
-      # port 69, --enable-dbus needs CAP_NET_RAW).
+      # port 69, --enable-dbus needs CAP_NET_RAW, which the DBus tests
+      # can only fake where unprivileged user namespaces are allowed).
       - name: Functional tests as root
         run: |
           sudo make check-functional CC=${{ matrix.cc }} COPTS="$COPTS" LUA=lua5.4
@@ -106,13 +107,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends check pkg-config \
-            dnsutils shunit2
+            dnsutils shunit2 libdbus-1-dev dbus libglib2.0-bin
 
+      # With DBus, as its handlers take arbitrary input from the bus.
       - name: Run unit tests under sanitizers
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: |
-          make -j"$(nproc)" CC=clang \
+          make -j"$(nproc)" CC=clang COPTS=-DHAVE_DBUS \
             CFLAGS="-Wall -W -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
             LDFLAGS="-fsanitize=address,undefined" check
 
@@ -125,7 +127,7 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1
           FUZZ_COUNT: 20000
         run: |
-          make -j"$(nproc)" CC=clang \
+          make -j"$(nproc)" CC=clang COPTS=-DHAVE_DBUS \
             CFLAGS="-Wall -W -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" \
             LDFLAGS="-fsanitize=address,undefined" check-functional
 

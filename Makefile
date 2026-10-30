@@ -87,7 +87,7 @@ objs = cache.o rfc1035.o util.o option.o forward.o network.o \
 # Unit tests: everything except main(), which is renamed so the test
 # runner can provide its own.
 test_srcobjs = check_dnsmasq.o test_util.o test_rfc1035.o test_option.o \
-       test_cache.o test_edns0.o
+       test_cache.o test_edns0.o test_dbus.o
 test_objs = $(filter-out dnsmasq.o,$(objs)) dnsmasq_main.o $(test_srcobjs)
 
 hdrs = dnsmasq.h config.h dhcp-protocol.h dhcp6-protocol.h \
@@ -109,10 +109,11 @@ check : $(BUILDDIR)
 	cd $(BUILDDIR) && ./dnsmasq_test
 
 # Functional tests: run the built daemon and query it, including with
-# hostile input. Needs dig, python3 and shunit2.
+# hostile input, and drive it over DBus. Needs dig, python3 and shunit2,
+# and for the DBus tests dbus-daemon, dbus-send and dbus-monitor.
 check-functional : all
 	status=0; \
-	for t in dnsmasq_test.sh security_test.sh; do \
+	for t in dnsmasq_test.sh security_test.sh dbus_test.sh; do \
 	  DNSMASQ=$(top)/$(BUILDDIR)/dnsmasq $(SHELL) $(top)/tests/functional/$$t || status=1; \
 	done; \
 	exit $$status

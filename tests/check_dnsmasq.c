@@ -91,6 +91,7 @@ int main(void) {
   srunner_add_suite(sr, option_suite());
   srunner_add_suite(sr, cache_suite());
   srunner_add_suite(sr, edns0_suite());
+  srunner_add_suite(sr, dbus_suite());
 
   srunner_run_all(sr, CK_NORMAL);
   failed = srunner_ntests_failed(sr);

@@ -27,6 +27,7 @@ Suite *rfc1035_suite(void);
 Suite *option_suite(void);
 Suite *cache_suite(void);
 Suite *edns0_suite(void);
+Suite *dbus_suite(void);
 
 /* Run read_opts() on a minimal command line (no config file, no
    resolv.conf, no /etc/hosts) plus the NULL-terminated extra args, then
